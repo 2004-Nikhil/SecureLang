@@ -30,6 +30,7 @@ private:
     Token makeToken(TokenType type, const std::string& value); // Helper to create token with current pos
     Token identifier();         // Handles identifiers and keywords
     Token number();             // Handles number literals
+    Token stringLiteral();      // <-- ADDED Helper for string literals
     Token singleCharToken(TokenType type); // Handles simple single-char tokens
 
     // Keyword map

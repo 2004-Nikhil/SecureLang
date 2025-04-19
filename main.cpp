@@ -48,6 +48,11 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::COLON: return "COLON";
         case TokenType::SEMICOLON: return "SEMICOLON"; // If used
         case TokenType::COMMENT: return "COMMENT"; // If used
+        case TokenType::TEXT_TYPE: return "TEXT_TYPE"; // <-- ADDED
+        case TokenType::PRINT_TEXT: return "PRINT_TEXT"; // <-- ADDED
+        case TokenType::STRING_LITERAL: return "STRING_LITERAL"; // <-- ADDED
+        case TokenType::DOUBLE_QUOTE: return "DOUBLE_QUOTE"; // <-- ADDED (if kept)
+        case TokenType::ERROR_UNTERMINATED_STRING: return "ERROR_UNTERMINATED_STRING"; // <-- ADDED
         case TokenType::UNKNOWN: return "UNKNOWN";
         case TokenType::END_OF_FILE: return "END_OF_FILE";
         default: return "INVALID_TOKEN_TYPE";

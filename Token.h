@@ -10,6 +10,7 @@ enum class TokenType {
     LET,         // let
     NUMBER_TYPE, // number (type name)
     ARRAY_TYPE,  // array (type name)
+    TEXT_TYPE,   // <-- ADDED Keyword for text type
     OF,          // of (used in array declaration)
     IF,          // if
     THEN,        // then (optional, consider if needed with {})
@@ -24,10 +25,12 @@ enum class TokenType {
     RETURN,      // return
     READ_NUMBER, // read_number
     PRINT_NUMBER,// print_number
+    PRINT_TEXT,  // <-- ADDED Built-in function
     SIZE_OF,     // size_of (could be keyword or operator depending on parsing)
 
     // Literals
     NUMBER_LITERAL, // e.g., 123, -45
+    STRING_LITERAL, // <-- ADDED For "..."
 
     // Identifiers
     IDENTIFIER,     // e.g., my_variable
@@ -54,10 +57,12 @@ enum class TokenType {
     RBRACKET,       // ]
     COLON,          // :
     SEMICOLON,      // ; (Decide if you want semicolons to terminate statements)
+    DOUBLE_QUOTE,   // <-- ADDED Might be useful internally, or skip
 
     // Special Tokens
     COMMENT,        // ~ ... \n (Maybe skip directly, or make a token if needed)
     UNKNOWN,        // For unrecognized characters
+    ERROR_UNTERMINATED_STRING, // <-- ADDED Specific Error
     END_OF_FILE     // Represents the end of the input stream
 };
 
@@ -81,4 +86,5 @@ struct Token {
     }
 };
 
+std::string tokenTypeToString(TokenType type);
 #endif // TOKEN_H

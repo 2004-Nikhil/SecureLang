@@ -2,12 +2,14 @@
 #include <iostream> // For error reporting, debugging
 #include <cctype>   // For isspace, isalpha, isdigit, etc.
 #include <utility>  // For std::move
+#include <stdexcept> // For potential errors
 
 // Initialize the static keyword map
 const std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"let", TokenType::LET},
     {"number", TokenType::NUMBER_TYPE},
     {"array", TokenType::ARRAY_TYPE},
+    {"text", TokenType::TEXT_TYPE},
     {"of", TokenType::OF},
     {"if", TokenType::IF},
     {"then", TokenType::THEN}, // Keep if needed
@@ -22,9 +24,11 @@ const std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"return", TokenType::RETURN},
     {"read_number", TokenType::READ_NUMBER},
     {"print_number", TokenType::PRINT_NUMBER},
+    {"print_text", TokenType::PRINT_TEXT},
     {"size_of", TokenType::SIZE_OF}
 };
 
+// TODO: Make column tracking in makeToken robust
 
 Lexer::Lexer(std::istream& input) : inputStream(input), line(1), column(0) {
     advance(); // Initialize currentChar
@@ -67,12 +71,13 @@ void Lexer::skipComment() {
 }
 
 Token Lexer::makeToken(TokenType type, const std::string& value) {
-     // Use the column where the token *started*, which might be tricky if not saved
-     // A simple approach: use current column - value.length() (approximate)
-     int startColumn = std::max(1, column - (int)value.length() + (type == TokenType::NUMBER_LITERAL && value.length() > 0 && value[0] == '-' ? 1: 0) ); // Adjust for unary minus recognition
-     if (type == TokenType::IDENTIFIER || type == TokenType::NUMBER_LITERAL) startColumn = column - value.length() +1; // More reliable for these
-
-     return Token(type, value, line, startColumn);
+     // This needs careful adjustment based on how start column is tracked.
+    // Using a dedicated start_col variable captured before processing is best.
+    // Example: assume startCol was captured before calling the helper function
+    // return Token(type, value, line, startCol); // <--- Ideal uses saved startCol
+    int startCol = std::max(1, column - (int)value.length()); // Approximation if startCol wasn't passed
+    if (type == TokenType::STRING_LITERAL) startCol = std::max(1, column - (int)value.length() -1); // Approx for strings (need to account for quotes)
+    return Token(type, value, line, startCol); // Needs real startCol passed or managed better
 }
 
 // Helper for simple single-character tokens
@@ -107,27 +112,87 @@ Token Lexer::number() {
     int startCol = column; // Record starting column
     bool isNegative = false;
     if(currentChar == '-'){
-        numValue += currentChar;
-        advance();
-        isNegative = true;
-    }
-
-    if (currentChar == EOF || !std::isdigit(static_cast<unsigned char>(currentChar))) {
-        // If '-' wasn't followed by a digit, it's just a MINUS operator
-        if(isNegative) {
-            return Token(TokenType::MINUS, "-", line, startCol);
+        // Check if previous token allows unary minus, otherwise it's binary
+        // For lexer, assume it's part of number if followed by digit
+        if (std::isdigit(static_cast<unsigned char>(peek()))) {
+            numValue += currentChar;
+            advance();
+            isNegative = true;
         } else {
-             // Should not happen if called correctly, maybe error?
-             return Token(TokenType::UNKNOWN, std::string(1,currentChar), line, startCol);
+            // It's just a MINUS operator token
+            advance(); // consume '-'
+            return Token(TokenType::MINUS, "-", line, startCol);
         }
     }
 
+    if (currentChar == EOF || !std::isdigit(static_cast<unsigned char>(currentChar))) {
+        // Should only happen if '-' wasn't followed by digit and wasn't handled above
+        // This indicates an error state or unexpected input
+        std::string errVal(1,currentChar); advance();
+        return Token(TokenType::UNKNOWN, errVal, line, startCol);
+   }
 
-    while (currentChar != EOF && std::isdigit(static_cast<unsigned char>(currentChar))) {
-        numValue += currentChar;
-        advance();
+   while (currentChar != EOF && std::isdigit(static_cast<unsigned char>(currentChar))) {
+       numValue += currentChar;
+       advance();
+   }
+    return Token(TokenType::NUMBER_LITERAL, numValue, line, startCol);
+}
+
+// *** NEW HELPER FUNCTION for String Literals ***
+Token Lexer::stringLiteral() {
+    int startLine = line;   // Record starting position
+    int startCol = column;
+
+    std::string value;
+    advance(); // Consume the opening quote "
+
+    while (currentChar != '"' && currentChar != EOF) {
+        if (currentChar == '\n') {
+             // Unterminated string literal error (strings cannot span lines)
+             // Optionally report error here or return specific token
+             std::cerr << "Lexer Error (Line " << startLine << ", Col " << startCol
+                       << "): Unterminated string literal." << std::endl;
+             return Token(TokenType::ERROR_UNTERMINATED_STRING, value, startLine, startCol);
+        }
+
+        if (currentChar == '\\') {
+            // Handle escape sequence
+            advance(); // Consume the backslash
+            switch (currentChar) {
+                case 'n': value += '\n'; advance(); break;
+                case 't': value += '\t'; advance(); break;
+                case '\\': value += '\\'; advance(); break;
+                case '"': value += '"'; advance(); break;
+                case EOF: // Unterminated escape sequence at EOF
+                     std::cerr << "Lexer Error (Line " << line << ", Col " << column
+                       << "): Unterminated escape sequence at end of file." << std::endl;
+                    return Token(TokenType::ERROR_UNTERMINATED_STRING, value, startLine, startCol);
+                default:
+                    // Invalid escape sequence, treat as literal backslash + char
+                    // Or report error:
+                    std::cerr << "Lexer Warning (Line " << line << ", Col " << (column -1)
+                              << "): Invalid escape sequence '\\" << currentChar << "'." << std::endl;
+                    value += '\\'; // Keep the literal backslash
+                    value += currentChar; advance(); // Keep the character
+                    break;
+            }
+        } else {
+            // Regular character in string
+            value += currentChar;
+            advance();
+        }
     }
-     return Token(TokenType::NUMBER_LITERAL, numValue, line, startCol);
+
+    if (currentChar == '"') {
+        advance(); // Consume the closing quote
+        return Token(TokenType::STRING_LITERAL, value, startLine, startCol);
+    } else {
+        // Reached EOF without closing quote
+        std::cerr << "Lexer Error (Line " << startLine << ", Col " << startCol
+                  << "): Unterminated string literal at end of file." << std::endl;
+        return Token(TokenType::ERROR_UNTERMINATED_STRING, value, startLine, startCol);
+    }
 }
 
 
@@ -142,7 +207,11 @@ Token Lexer::getNextToken() {
 
         // After skipping, check again for EOF or other characters
          if (currentChar == EOF) break;
-         if (std::isspace(static_cast<unsigned char>(currentChar))) continue; // Might hit newline after comment
+         if (std::isspace(static_cast<unsigned char>(currentChar))) {
+            // This happens if skipWhitespace stops at \n and skipComment leaves us at \n
+            advance(); // Consume the whitespace/newline
+            continue;
+       } // Might hit newline after comment
 
 
         int startCol = column; // Record start column *before* processing character
@@ -156,22 +225,24 @@ Token Lexer::getNextToken() {
         if (std::isdigit(static_cast<unsigned char>(currentChar))) {
             return number();
         }
-         // Handle potential negative numbers vs. minus operator
-        if (currentChar == '-') {
-             // Peek ahead: if followed by digit, it's part of a number
-             if (std::isdigit(static_cast<unsigned char>(peek()))) {
-                 return number(); // number() handles the '-' sign
-             } else {
-                 // Otherwise, it's the MINUS operator
-                  return singleCharToken(TokenType::MINUS);
-             }
+        // *** ADDED: Check for string literal start ***
+        if (currentChar == '"') {
+            return stringLiteral();
         }
-
 
         // Operators and Punctuation
         switch (currentChar) {
             case '+': advance(); return Token(TokenType::PLUS, "+", line, startCol);
-            // case '-': handled above/in number()
+            case '-':
+                // Check if it's potentially part of a negative number *or* just minus
+                if (std::isdigit(static_cast<unsigned char>(peek()))) {
+                    // Let number() handle it - it will consume '-' if needed
+                    return number();
+                } else {
+                    // Just the MINUS operator
+                    advance();
+                    return Token(TokenType::MINUS, "-", line, startCol);
+                }
             case '*': advance(); return Token(TokenType::STAR, "*", line, startCol);
             case '/': advance(); return Token(TokenType::SLASH, "/", line, startCol);
             case '%': advance(); return Token(TokenType::PERCENT, "%", line, startCol);
